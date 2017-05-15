@@ -1,0 +1,9 @@
+include setup.py VERSION README.md MANIFEST.in
+include breakpad/src/processor/*.h
+include breakpad/src/google_breakpad/processor/*.h
+include breakpad/src/google_breakpad/common/*.h
+include breakpad/src/common/*.h
+include breakpad/src/third_party/libdisasm/*.h
+include socorro-minidump-stackwalk/jsoncpp-src-0.5.0/include/json/*.h
+include socorro-minidump-stackwalk/jsoncpp-src-0.5.0/src/lib_json/*.h
+include socorro-minidump-stackwalk/jsoncpp-src-0.5.0/src/lib_json/*.inl

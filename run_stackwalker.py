@@ -12,16 +12,12 @@ def writeJson(data):
 
 
 command = {
-    'minidump_path': '/projects/crashzone/tests/test_data/symbolicate/1.dmp',
-    'symbol_paths': ['/projects/crashzone/tests/test_data/symbolicate/symbol_store'],
-    'err_log_path': '/tmp/stackwalker_log'
-}
-
-command = {
-    'minidump_path': '/projects/crashzone/tests/test_data/symbolicate/1.dmp',
-    'bar': ['/projects/crashzone/tests/test_data/symbolicate/symbol_store'],
+    'minidump_path': 'breakpad/src/processor/testdata//linux_null_dereference.dmp',
+    'symbol_paths': ['breakpad/src/processor/testdata//symbols'],
     'err_log_path': '/tmp/stackwalker_log'
 }
 
 out = stackwalker.stackwalk(json.dumps(command))
 print writeJson(json.loads(out))
+
+# /tmp/stackwalker_log will contains log information

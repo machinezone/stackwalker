@@ -8,5 +8,5 @@ Create a virtualenv, enter it. Once this is done, issue those commands.
 
 ```
 python setup.py install
-python run\_stackwalker.py
+python run_stackwalker.py
 ```

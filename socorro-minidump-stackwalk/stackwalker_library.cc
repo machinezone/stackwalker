@@ -551,7 +551,7 @@ int ConvertModulesToJSON(const ProcessState& process_state,
   if (!modules)
     return -1;
 
-  u_int64_t main_address = 0;
+  uint64_t main_address = 0;
   const CodeModule *main_module = modules->GetMainModule();
   if (main_module) {
     main_address = main_module->base_address();

@@ -7,7 +7,7 @@ import os
 from setuptools import setup, Extension
 
 if sys.version_info[:2] < (2, 7):
-    print 'Error: stackwalker requires Python 2.7'
+    print('Error: stackwalker requires Python >= 2.7')
     sys.exit(1)
 
 ROOT = os.path.realpath(os.path.join(os.path.dirname(__file__)))
@@ -45,6 +45,9 @@ else:
     sys.stderr.write("Don't know how to compile breakpad for %s!\n" % system)
     sys.exit(1)
 
+# Module init C++ file is python version specific to avoid a big mess of #ifdef
+module_init_path = 'stackwalker_ext_v{}.cc'.format(sys.version_info[:2][0])
+
 setup(
     name = 'stackwalker',
     version=VERSION,
@@ -70,6 +73,15 @@ setup(
     ext_modules = [
         Extension('stackwalker',
             sources = [
+                # our module
+                module_init_path,
+                'stackwalker_ext_common.cc',
+                'socorro-minidump-stackwalk/stackwalker_library.cc',
+                'socorro-minidump-stackwalk/jsoncpp-src-0.5.0/src/lib_json/json_reader.cpp',
+                'socorro-minidump-stackwalk/jsoncpp-src-0.5.0/src/lib_json/json_value.cpp',
+                'socorro-minidump-stackwalk/jsoncpp-src-0.5.0/src/lib_json/json_writer.cpp',
+
+                # breakpad
                 'breakpad/src/processor/basic_code_modules.cc',
                 'breakpad/src/processor/basic_source_line_resolver.cc',
                 'breakpad/src/processor/call_stack.cc',
@@ -121,15 +133,7 @@ setup(
                 'breakpad/src/third_party/libdisasm/x86_imm.c',
                 'breakpad/src/third_party/libdisasm/x86_insn.c',
                 'breakpad/src/third_party/libdisasm/x86_misc.c',
-                'breakpad/src/third_party/libdisasm/x86_operand_list.c',
-
-                'socorro-minidump-stackwalk/stackwalker_library.cc',
-                'socorro-minidump-stackwalk/jsoncpp-src-0.5.0/src/lib_json/json_reader.cpp',
-                'socorro-minidump-stackwalk/jsoncpp-src-0.5.0/src/lib_json/json_value.cpp',
-                'socorro-minidump-stackwalk/jsoncpp-src-0.5.0/src/lib_json/json_writer.cpp',
-
-                # our module
-                'stackwalker_ext.cc'
+                'breakpad/src/third_party/libdisasm/x86_operand_list.c'
             ],
             libraries = ['stdc++'],
             extra_compile_args = extra_compile_args,

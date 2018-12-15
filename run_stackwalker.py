@@ -18,6 +18,6 @@ command = {
 }
 
 out = stackwalker.stackwalk(json.dumps(command))
-print writeJson(json.loads(out))
+print(writeJson(json.loads(out)))
 
 # /tmp/stackwalker_log will contains log information

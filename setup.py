@@ -134,7 +134,7 @@ libdiasm = [
 ]
 
 if system == 'Linux':
-    sources.extern(libdiasm)
+    sources.extend(libdiasm)
 
 setup(
     name = 'stackwalker',

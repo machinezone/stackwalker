@@ -100,11 +100,16 @@ the file; it may contain spaces.
 
 A `FUNC` record describes a source-language function. It has the form:
 
-> `FUNC` _address_ _size_ _parameter\_size_ _name_
+> `FUNC` _[m]_ _address_ _size_ _parameter\_size_ _name_
 
-For example: `FUNC c184 30 0 nsQueryInterfaceWithError::operator()(nsID const&,
+For example: `FUNC m c184 30 0 nsQueryInterfaceWithError::operator()(nsID const&,
 void**) const
 `
+
+The _m_ field is optional. If present it indicates that multiple symbols
+reference this function's instructions. (In which case, only one symbol name is
+mentioned within the breakpad file.) Multiple symbols referencing the same
+instructions may occur due to identical code folding by the linker.
 
 The _address_ and _size_ fields are hexadecimal numbers indicating the start
 address and length in bytes of the machine code instructions the function
@@ -158,15 +163,20 @@ A `PUBLIC` record describes a publicly visible linker symbol, such as that used
 to identify an assembly language entry point or region of memory. It has the
 form:
 
-> PUBLIC _address_ _parameter\_size_ _name_
+> PUBLIC _[m]_ _address_ _parameter\_size_ _name_
 
-For example: `PUBLIC 2160 0 Public2_1
+For example: `PUBLIC m 2160 0 Public2_1
 `
 
 The Breakpad processor essentially treats a `PUBLIC` record as defining a
 function with no line number data and an indeterminate size: the code extends to
 the next address mentioned. If a given address is covered by both a `PUBLIC`
 record and a `FUNC` record, the processor uses the `FUNC` data.
+
+The _m_ field is optional. If present it indicates that multiple symbols
+reference this function's instructions. (In which case, only one symbol name is
+mentioned within the breakpad file.) Multiple symbols referencing the same
+instructions may occur due to identical code folding by the linker.
 
 The _address_ field is a hexadecimal number indicating the symbol's address,
 relative to the module's load address.
@@ -197,10 +207,10 @@ All fields of a `STACK WIN` record, except for the last, are hexadecimal
 numbers.
 
 The _type_ field indicates what sort of stack frame data this record holds. Its
-value should be one of the values of the [StackFrameTypeEnum]
-(http://msdn.microsoft.com/en-us/library/bc5207xw%28VS.100%29.aspx) type in
-Microsoft's [Debug Interface Access (DIA)]
-(http://msdn.microsoft.com/en-us/library/x93ctkx8%28VS.100%29.aspx) API.
+value should be one of the values of the
+[StackFrameTypeEnum](http://msdn.microsoft.com/en-us/library/bc5207xw%28VS.100%29.aspx)
+type in Microsoft's
+[Debug Interface Access (DIA)](http://msdn.microsoft.com/en-us/library/x93ctkx8%28VS.100%29.aspx) API.
 Breakpad uses only records of type 4 (`FrameTypeFrameData`) and 0
 (`FrameTypeFPO`); it ignores others. These types differ only in whether the last
 field is an _allocates\_base\_pointer_ flag (`FrameTypeFPO`) or a program string
@@ -274,8 +284,7 @@ follows:
 *   If the _has\_program\_string_ field of a `STACK WIN` record is not zero,
     then the record's final field is a string containing a program to be
     interpreted to recover the caller's frame. The comments in the
-    [postfix\_evaluator.h]
-    (http://code.google.com/p/google-breakpad/source/browse/trunk/src/processor/postfix_evaluator.h#40)
+    [postfix\_evaluator.h](../src/processor/postfix_evaluator.h#40)
     header file explain the language in which the program is written. You should
     place the following variables in the dictionary before interpreting the
     program:

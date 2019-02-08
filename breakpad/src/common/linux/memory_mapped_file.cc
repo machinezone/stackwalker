@@ -42,17 +42,6 @@
 #include "common/memory_range.h"
 #include "third_party/lss/linux_syscall_support.h"
 
-#if defined(__APPLE__)
-#include <sys/stat.h>
-#define sys_mmap mmap
-#define sys_mmap2 mmap
-#define sys_munmap munmap
-#define sys_open open
-#define sys_close close
-#define sys_fstat fstat
-#define kernel_stat stat
-#endif
-
 namespace google_breakpad {
 
 MemoryMappedFile::MemoryMappedFile() {}
@@ -98,18 +87,7 @@ bool MemoryMappedFile::Map(const char* path, size_t offset) {
     return true;
   }
 
-#if defined(__x86_64__) || defined(__aarch64__) || \
-   (defined(__mips__) && _MIPS_SIM == _ABI64)
   void* data = sys_mmap(NULL, file_len, PROT_READ, MAP_PRIVATE, fd, offset);
-#else
-  if ((offset & 4095) != 0) {
-    // Not page aligned.
-    sys_close(fd);
-    return false;
-  }
-  void* data = sys_mmap2(
-      NULL, file_len, PROT_READ, MAP_PRIVATE, fd, offset >> 12);
-#endif
   sys_close(fd);
   if (data == MAP_FAILED) {
     return false;

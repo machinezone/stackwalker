@@ -33,10 +33,12 @@
 #include <algorithm>
 #include <fstream>
 #include <iostream>
+#include <map>
 #include <ostream>
 #include <vector>
 #include <set>
 #include <cstdlib>
+#include <stdexcept>
 
 #include <errno.h>
 #include <getopt.h>
@@ -72,6 +74,7 @@ using google_breakpad::ExploitabilityRating;
 using google_breakpad::Minidump;
 using google_breakpad::MinidumpMemoryInfo;
 using google_breakpad::MinidumpMemoryInfoList;
+using google_breakpad::MinidumpMiscInfo;
 using google_breakpad::MinidumpModule;
 using google_breakpad::MinidumpProcessor;
 using google_breakpad::PathnameStripper;
@@ -93,6 +96,7 @@ using google_breakpad::Stackwalker;
 using google_breakpad::SymbolSupplier;
 using google_breakpad::SystemInfo;
 
+using std::map;
 using std::string;
 using std::vector;
 using std::ifstream;
@@ -123,6 +127,53 @@ static string ToInt(uint64_t value) {
   return buffer;
 }
 
+static vector<string> split(const string& s, char delimiter) {
+  vector<string> bits;
+  size_t prev = 0;
+  size_t pos = s.find(delimiter);
+  while (true) {
+    size_t count = pos == string::npos ? string::npos : pos - prev;
+    bits.push_back(s.substr(prev, count));
+    if (pos == string::npos) {
+      break;
+    }
+    prev = pos + 1;
+    pos = s.find(delimiter, prev);
+  }
+  return bits;
+}
+
+static bool startswith(const string& s, const string& f) {
+  return s.find(f) == 0;
+}
+
+static string lower(const string& s) {
+  string r = s;
+  std::transform(r.begin(), r.end(), r.begin(), ::tolower);
+  return r;
+}
+
+static string stripquotes(const string& s) {
+  if (s.size() > 2 && s.front() == '"' && s.back() == '"') {
+    return s.substr(1, s.size() - 2);
+  }
+  return s;
+}
+
+static string trim(const string& s) {
+  size_t first = s.find_first_not_of(" \t");
+  if (first == string::npos) {
+    first = 0;
+  }
+
+  size_t last = s.find_last_not_of(" \t");
+  if (last == string::npos) {
+    last = s.length();
+  }
+
+  return s.substr(first, last);
+}
+
 class StackFrameSymbolizerForward : public StackFrameSymbolizer {
 public:
   StackFrameSymbolizerForward(SymbolSupplier* supplier,
@@ -130,10 +181,12 @@ public:
     : StackFrameSymbolizer(supplier, resolver) {}
 
   virtual SymbolizerResult FillSourceLineInfo(const CodeModules* modules,
+                                              const CodeModules* unloaded_modules,
                                               const SystemInfo* system_info,
                                               StackFrame* stack_frame) {
     SymbolizerResult res =
       StackFrameSymbolizer::FillSourceLineInfo(modules,
+                                               unloaded_modules,
                                                system_info,
                                                stack_frame);
     RecordResult(stack_frame->module, res);
@@ -540,8 +593,51 @@ bool ConvertStackToJSON(const ProcessState& process_state,
   return truncate;
 }
 
+typedef map<string, string> ModuleCertMap;
+
+static ModuleCertMap GetModuleCertMap(const Json::Value& raw_root)
+{
+  ModuleCertMap result;
+
+  const Json::Value& infoString = raw_root["ModuleSignatureInfo"];
+  if (!infoString || !infoString.isString()) {
+    return result;
+  }
+
+  Json::Value info;
+  Json::Reader reader;
+  if (!reader.parse(infoString.asString(), info, false)) {
+    return result;
+  }
+
+  Json::Value::Members certs = info.getMemberNames();
+
+  for (auto&& cert : certs) {
+    Json::Value& moduleArray = info[cert];
+    if (!moduleArray.isArray()) {
+      continue;
+    }
+
+    for (auto&& module : moduleArray) {
+      if (!module.isString()) {
+        continue;
+      }
+
+      auto moduleStr = module.asString();
+      if (moduleStr.empty()) {
+        continue;
+      }
+
+      result.insert(std::make_pair(moduleStr, cert));
+    }
+  }
+
+  return result;
+}
+
 int ConvertModulesToJSON(const ProcessState& process_state,
                          const StackFrameSymbolizerForward& symbolizer,
+                         const ModuleCertMap& cert_info,
                          Json::Value& json) {
   const CodeModules* modules = process_state.modules();
   const vector<const CodeModule*>* modules_without_symbols =
@@ -551,7 +647,7 @@ int ConvertModulesToJSON(const ProcessState& process_state,
   if (!modules)
     return -1;
 
-  uint64_t main_address = 0;
+  u_int64_t main_address = 0;
   const CodeModule *main_module = modules->GetMainModule();
   if (main_module) {
     main_address = main_module->base_address();
@@ -567,7 +663,8 @@ int ConvertModulesToJSON(const ProcessState& process_state,
       main_module_index = module_sequence;
 
     Json::Value module_data;
-    module_data["filename"] = PathnameStripper::File(module->code_file());
+    string filename_leaf = PathnameStripper::File(module->code_file());
+    module_data["filename"] = filename_leaf;
     module_data["code_id"] = PathnameStripper::File(module->code_identifier());
     module_data["version"] = module->version();
     module_data["debug_file"] = PathnameStripper::File(module->debug_file());
@@ -588,7 +685,7 @@ int ConvertModulesToJSON(const ProcessState& process_state,
   return main_module_index;
 }
 
-static string ExploitabilityString(ExploitabilityRating exploitability) {
+string ExploitabilityString(ExploitabilityRating exploitability) {
   string str;
   switch (exploitability) {
   case google_breakpad::EXPLOITABILITY_NOT_ANALYZED:
@@ -619,9 +716,12 @@ static string ExploitabilityString(ExploitabilityRating exploitability) {
   return str;
 }
 
-static void ConvertProcessStateToJSON(const ProcessState& process_state,
-                                      const StackFrameSymbolizerForward& symbolizer,
-                                      Json::Value& root) {
+map<uint32_t, string> GetThreadIdNameMap(const Json::Value& raw_root);
+
+void ConvertProcessStateToJSON(const ProcessState& process_state,
+                               const StackFrameSymbolizerForward& symbolizer,
+                               Json::Value& root,
+                               const Json::Value& raw_root) {
   // OS and CPU information.
   Json::Value system_info;
   system_info["os"] = process_state.system_info()->os;
@@ -650,11 +750,19 @@ static void ConvertProcessStateToJSON(const ProcessState& process_state,
   }
   root["crash_info"] = crash_info;
 
+  ModuleCertMap cert_info = GetModuleCertMap(raw_root);
+
   Json::Value modules(Json::arrayValue);
-  int main_module = ConvertModulesToJSON(process_state, symbolizer, modules);
+  int main_module = ConvertModulesToJSON(process_state, symbolizer,
+                                         cert_info, modules);
   if (main_module != -1)
     root["main_module"] = main_module;
   root["modules"] = modules;
+  if (!cert_info.empty()) {
+    root["modules_contains_cert_info"] = true;
+  }
+
+  auto thread_id_name_map = std::move(GetThreadIdNameMap(raw_root));
 
   Json::Value threads(Json::arrayValue);
   int thread_count = process_state.threads()->size();
@@ -670,6 +778,10 @@ static void ConvertProcessStateToJSON(const ProcessState& process_state,
     }
     thread["frames"] = stack;
     thread["frame_count"] = stack.size();
+    auto thread_name = thread_id_name_map[raw_stack->tid()];
+    if (!thread_name.empty()) {
+      thread["thread_name"] = thread_name;
+    }
     threads.append(thread);
   }
   root["threads"] = threads;
@@ -687,6 +799,10 @@ static void ConvertProcessStateToJSON(const ProcessState& process_state,
     crashing_thread["frames"] = stack;
     crashing_thread["total_frames"] =
       static_cast<Json::UInt>(crashing_stack->frames()->size());
+    auto thread_name = thread_id_name_map[crashing_stack->tid()];
+    if (!thread_name.empty()) {
+      crashing_thread["thread_name"] = thread_name;
+    }
     root["crashing_thread"] = crashing_thread;
   }
 
@@ -747,37 +863,19 @@ static void ConvertMemoryInfoToJSON(Minidump& dump,
 
 }
 
-static vector<string> split(const string& s, char delimiter) {
-  vector<string> bits;
-  size_t prev = 0;
-  size_t pos = s.find(delimiter);
-  while (true) {
-    size_t count = pos == string::npos ? string::npos : pos - prev;
-    bits.push_back(s.substr(prev, count));
-    if (pos == string::npos) {
-      break;
+static void ConvertCPUInfoToJSON(const string& cpuinfo,
+                                 Json::Value& root) {
+  for (string& line : split(cpuinfo, '\n')) {
+    vector<string> bits = split(line, ':');
+    if (bits.size() != 2 || !startswith(bits[0], "microcode")) {
+        continue;
     }
-    prev = pos + 1;
-    pos = s.find(delimiter, prev);
+
+    try {
+        root["system_info"]["cpu_microcode_version"] = static_cast<Json::UInt>(std::stoi(trim(bits[1]), nullptr, 16));
+        break;
+    } catch (const std::invalid_argument& e) {}
   }
-  return bits;
-}
-
-static bool startswith(const string& s, const string& f) {
-  return s.find(f) == 0;
-}
-
-static string lower(const string& s) {
-  string r = s;
-  std::transform(r.begin(), r.end(), r.begin(), ::tolower);
-  return r;
-}
-
-static string stripquotes(const string& s) {
-  if (s.size() > 2 && s.front() == '"' && s.back() == '"') {
-    return s.substr(1, s.size() - 2);
-  }
-  return s;
 }
 
 static void ConvertLSBReleaseToJSON(const string& lsb_release,
@@ -824,6 +922,34 @@ static string ResultString(ProcessResult result) {
     break;
   }
   return str;
+}
+
+// Parse crash annotation "ThreadIdNameMapping" and return a map of
+// thread id -> thread name.
+static map<uint32_t, string> GetThreadIdNameMap(const Json::Value& raw_root)
+{
+  map<uint32_t, string> result {};
+
+  // Sample input: 23534:"Timer",23535:"Link Monitor",
+  string input = raw_root.get("ThreadIdNameMapping", "").asString();
+  if (input.empty()) {
+    return result;
+  }
+
+  for (string& map_item : split(input, ',')) {
+    // Sample map_item: 23534:"Timer"
+    vector<string> id_and_name = split(map_item, ':');
+    if (id_and_name.size() != 2) {
+      continue;
+    }
+
+    uint32_t thread_id = strtoul(id_and_name[0].c_str(), NULL, 10);
+    const string thread_name = stripquotes(id_and_name[1]);
+
+    result[thread_id] = thread_name;
+  }
+
+  return result;
 }
 
 //*** This code copy-pasted from minidump_stackwalk.cc ***
@@ -1099,8 +1225,8 @@ stackwalker(const std::string& command)
 
   Redirector redirector(err_log_path);
 
-  extern bool gCrashZoneDisableBreakpadCFFI;
-  gCrashZoneDisableBreakpadCFFI = disable_breakpad_cffi;
+  // extern bool gCrashZoneDisableBreakpadCFFI;
+  // gCrashZoneDisableBreakpadCFFI = disable_breakpad_cffi;
 
   Minidump minidump(minidump_path);
 
@@ -1125,9 +1251,27 @@ stackwalker(const std::string& command)
   root["status"] = ResultString(result);
   root["sensitive"] = Json::Value(Json::objectValue);
   if (result == google_breakpad::PROCESS_OK) {
-    ConvertProcessStateToJSON(process_state, symbolizer, root);
+    ConvertProcessStateToJSON(process_state, symbolizer, root, raw_root);
   }
   ConvertMemoryInfoToJSON(minidump, raw_root, root);
+
+  // Get the PID.
+  MinidumpMiscInfo* misc_info = minidump.GetMiscInfo();
+  if (misc_info && misc_info->misc_info() &&
+      (misc_info->misc_info()->flags1 & MD_MISCINFO_FLAGS1_PROCESS_ID)) {
+    root["pid"] = misc_info->misc_info()->process_id;
+  }
+
+  // See if this is a Linux dump with /proc/cpuinfo in it
+  uint32_t cpuinfo_length = 0;
+  if (process_state.system_info()->os == "Linux" &&
+      minidump.SeekToStreamType(MD_LINUX_CPU_INFO, &cpuinfo_length)) {
+    string contents;
+    contents.resize(cpuinfo_length);
+    if (minidump.ReadBytes(const_cast<char*>(contents.data()), cpuinfo_length)) {
+      ConvertCPUInfoToJSON(contents, root);
+    }
+  }
 
   // See if this is a Linux dump with /etc/lsb-release in it
   uint32_t length = 0;

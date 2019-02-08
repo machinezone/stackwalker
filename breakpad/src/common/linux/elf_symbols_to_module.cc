@@ -39,10 +39,6 @@
 #include "common/byte_cursor.h"
 #include "common/module.h"
 
-#if defined(__APPLE__)
-#include "common/memrchr.h"
-#endif
-
 namespace google_breakpad {
 
 class ELFSymbolIterator {

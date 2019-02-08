@@ -23,6 +23,10 @@
 // that utilize known bad register values.
 //
 // Author: Cris Neckar
+//
+// stackwalker python module change: libdis cannot be compiled as a C module
+// because the C++11 option is required and triggers a C (clang) build error.
+// So we ifdef it out on macOS and hope 
 
 #include "processor/disassembler_x86.h"
 
@@ -43,17 +47,22 @@ DisassemblerX86::DisassemblerX86(const uint8_t *bytecode,
                                      pushed_bad_value_(false),
                                      end_of_block_(false),
                                      flags_(0) {
+#ifndef __APPLE__
   libdis::x86_init(libdis::opt_none, NULL, NULL);
+#endif
 }
 
 DisassemblerX86::~DisassemblerX86() {
+#ifndef __APPLE__
   if (instr_valid_)
     libdis::x86_oplist_free(&current_instr_);
 
   libdis::x86_cleanup();
+#endif
 }
 
 uint32_t DisassemblerX86::NextInstruction() {
+#ifndef __APPLE__
   if (instr_valid_)
     libdis::x86_oplist_free(&current_instr_);
 
@@ -207,9 +216,13 @@ uint32_t DisassemblerX86::NextInstruction() {
   }
 
   return instr_size;
+#else
+  return 0;
+#endif
 }
 
 bool DisassemblerX86::setBadRead() {
+#ifndef __APPLE__
   if (!instr_valid_)
     return false;
 
@@ -221,9 +234,13 @@ bool DisassemblerX86::setBadRead() {
          sizeof(libdis::x86_reg_t));
   register_valid_ = true;
   return true;
+#else
+  return false;
+#endif
 }
 
 bool DisassemblerX86::setBadWrite() {
+#ifndef __APPLE__
   if (!instr_valid_)
     return false;
 
@@ -235,6 +252,9 @@ bool DisassemblerX86::setBadWrite() {
          sizeof(libdis::x86_reg_t));
   register_valid_ = true;
   return true;
+#else
+  return false;
+#endif
 }
 
 }  // namespace google_breakpad

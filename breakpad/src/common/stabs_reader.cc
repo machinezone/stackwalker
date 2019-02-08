@@ -41,10 +41,6 @@
 
 #include "common/using_std_string.h"
 
-#ifndef N_UNDF
-#define N_UNDF 0
-#endif
-
 using std::vector;
 
 namespace google_breakpad {

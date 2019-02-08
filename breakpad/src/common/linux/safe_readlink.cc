@@ -34,11 +34,6 @@
 
 #include "third_party/lss/linux_syscall_support.h"
 
-#if defined(__APPLE__)
-#include <unistd.h>
-#define sys_readlink readlink
-#endif
-
 namespace google_breakpad {
 
 bool SafeReadLink(const char* path, char* buffer, size_t buffer_size) {

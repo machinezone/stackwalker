@@ -47,6 +47,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
+#include <sys/types.h> // for u_int64_t on Linux
 
 #include "common/scoped_ptr.h"
 #include "google_breakpad/common/breakpad_types.h"
@@ -716,7 +717,7 @@ string ExploitabilityString(ExploitabilityRating exploitability) {
   return str;
 }
 
-map<uint32_t, string> GetThreadIdNameMap(const Json::Value& raw_root);
+static map<uint32_t, string> GetThreadIdNameMap(const Json::Value& raw_root);
 
 void ConvertProcessStateToJSON(const ProcessState& process_state,
                                const StackFrameSymbolizerForward& symbolizer,

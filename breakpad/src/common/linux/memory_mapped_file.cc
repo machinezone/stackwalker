@@ -42,6 +42,17 @@
 #include "common/memory_range.h"
 #include "third_party/lss/linux_syscall_support.h"
 
+#if defined(__APPLE__)
+#include <sys/stat.h>
+#define sys_mmap mmap
+#define sys_mmap2 mmap
+#define sys_munmap munmap
+#define sys_open open
+#define sys_close close
+#define sys_fstat fstat
+#define kernel_stat stat
+#endif
+
 namespace google_breakpad {
 
 MemoryMappedFile::MemoryMappedFile() {}

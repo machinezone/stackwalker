@@ -38,6 +38,7 @@
 
 #include "common/byte_cursor.h"
 #include "common/module.h"
+#include "memrchr.h"
 
 namespace google_breakpad {
 

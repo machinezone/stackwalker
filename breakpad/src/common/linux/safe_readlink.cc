@@ -31,6 +31,7 @@
 // See safe_readlink.h for details.
 
 #include <stddef.h>
+#include <cstddef>
 
 #include "third_party/lss/linux_syscall_support.h"
 
